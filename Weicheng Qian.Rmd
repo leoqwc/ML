@@ -1,0 +1,481 @@
+---
+title: "Multivariate Analysis on Wine Data"
+subtitle: "Discrimination & Classification on Wine Quality"
+author: "Weicheng Qian"
+date: "December 10, 2019"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2);library(MASS);library(gridExtra);library(caTools);library(tidyverse);library(mda);library(klaR);library(PerformanceAnalytics); library(corrplot); library(tree);library(ROCR);library(randomForest);library(class);library(e1071); library(caret); library(scales); library(rattle); library(rpart.plot); library(RColorBrewer); library(tictoc); library(kernlab); library(ISLR); library(keras)
+LogisticData <- read.csv("LogisticData.csv", sep=",")
+LinearData <- read.csv("LinearData.csv", sep=",")
+LinearData_lessvaraible <- read.csv("LinearData_lessvaraible.csv", sep=",")
+
+
+
+theme1 <- theme_bw() +
+  theme(axis.text = element_text(size = 8, colour = "#6b3447"),
+        axis.title = element_text(size = 10, colour = "#2f2f63"),
+        legend.title = element_text(size = 8, colour = "#2f2f63"),
+        legend.text = element_text(size = 8, colour = "#6b3447"),
+        title = element_text(size = 12, colour = "#2f2f63"),
+        axis.ticks = element_line(colour = "#6b3447"),
+        plot.caption = element_text(size = 8, colour = "#2f2f63"),
+        plot.subtitle = element_text(size = 10, colour = "#2f2f63"))
+cbPalette <- c("#CC79A7", "#D55E00", "#56B4E9", "#F0E442",
+               "#009E73", "#0072B2", "#999999", "#E69F00")
+
+ggplotConfusionMatrix <- function(m){
+  mytitle <- paste("Accuracy", percent_format()(m$overall[1]),
+                   "Kappa", percent_format()(m$overall[2]))
+  p <-
+    ggplot(data = as.data.frame(m$table) ,
+           aes(x = Reference, y = Prediction)) +
+    geom_tile(aes(fill = log(Freq)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "steelblue") +
+    geom_text(aes(x = Reference, y = Prediction, label = Freq)) +
+    theme(legend.position = "none") +
+    ggtitle(mytitle)
+  return(p)
+}
+```
+
+## Data
+
+```{r echo=F,warning=F,fig.width=8,fig.height=7}
+LogisticData$y <- as.factor(LogisticData$y)
+set.seed(1234)
+train_indices <- sample(1:nrow(LogisticData), 35000)
+train1 <- LogisticData[train_indices,]
+test1 <- LogisticData[-train_indices,]
+```
+
+```{r}
+LinearData_lessvaraible$y <- as.factor(LinearData_lessvaraible$y)
+set.seed(1234)
+train_indices <- sample(1:nrow(LinearData_lessvaraible), 35000)
+train2 <- LinearData_lessvaraible[train_indices,]
+test2 <- LinearData_lessvaraible[-train_indices,]
+```
+
+```{r}
+LinearData$y <- as.factor(LinearData$y)
+set.seed(1234)
+train_indices <- sample(1:nrow(LinearData), 35000)
+train3 <- LinearData[train_indices,]
+test3 <- LinearData[-train_indices,]
+```
+
+
+# Data Analysis: Classification
+
+## Logistic Regression
+
+```{r}
+logistic_model <- glm(y ~., data = train1, family = binomial) %>%
+  stepAIC(trace = FALSE)
+summary(logistic_model)
+probabilities <- logistic_model %>% predict(test1, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+mean(predicted.classes==test1$y)
+```
+
+
+```{r}
+logistic_model <- glm(y ~., data = train2, family = binomial) %>%
+  stepAIC(trace = FALSE)
+summary(logistic_model)
+probabilities <- logistic_model %>% predict(test2, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+mean(predicted.classes==test2$y)
+```
+
+
+```{r}
+logistic_model <- glm(y ~., data = train3, family = binomial) %>%
+  stepAIC(trace = FALSE)
+summary(logistic_model)
+probabilities <- logistic_model %>% predict(test3, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, 1, 0)
+mean(predicted.classes==test3$y)
+```
+
+## Decision Tree
+
+```{r}
+tree1 <- tree(formula = y ~ ., data = train1, 
+             method = "class",
+             control = tree.control(nobs = nrow(train1),
+                                          mincut = 30,
+                                          minsize = 60,
+                                          mindev = .003))
+summary(tree1)
+```
+
+```{r}
+tree2 <- tree(formula = y ~ ., data = train2, 
+             method = "class",
+             control = tree.control(nobs = nrow(train2),
+                                          mincut = 5,
+                                          minsize = 10,
+                                          mindev = .003))
+summary(tree2)
+```
+
+```{r fig.width=12,fig.height=11}
+plot(tree2, type = "uniform")
+text(tree2, pretty = 0, cex = 1, col = "red")
+title("Classification Tree (Before Pruning)")
+
+class_acc <- function(conf) {
+  sum(diag(conf)) / sum(conf)
+}
+
+tree2_pred <- predict(tree2, test2, type = "class")
+```
+
+```{r, fig.height=4}
+#confusion matrix
+tree2_conf <- confusionMatrix(tree2_pred, test2$y)
+ggplotConfusionMatrix(tree2_conf)
+
+tree2_conf <- table(pred = tree2_pred, test2$y)
+#accuracy
+tree2_acc <- class_acc(tree2_conf)
+tree2_acc
+```
+
+```{r fig.width=12,fig.height=11}
+plot(tree1, type = "uniform")
+text(tree1, pretty = 0, cex = 1, col = "red")
+title("Classification Tree (Before Pruning)")
+
+class_acc <- function(conf) {
+  sum(diag(conf)) / sum(conf)
+}
+
+tree1_pred <- predict(tree1, test1, type = "class")
+```
+
+```{r, fig.height=4}
+#confusion matrix
+tree1_conf <- confusionMatrix(tree1_pred, test1$y)
+ggplotConfusionMatrix(tree1_conf)
+
+tree1_conf <- table(pred = tree1_pred, test1$y)
+#accuracy
+tree1_acc <- class_acc(tree1_conf)
+tree1_acc
+```
+
+```{r}
+all_tree_probs <- as.data.frame(predict(tree1, test1, type = "vector"))
+tree_probs <- all_tree_probs[,2]
+
+tree_roc_pred <- prediction(tree_probs, test1$y)
+tree_roc_perf <- performance(tree_roc_pred, "tpr", "fpr")
+
+# Plotting the ROC curve for the decision tree
+plot(tree_roc_perf, col = 2, lwd = 3, 
+     main = "ROC Curve for tree (before pruning)")
+abline(0,1)
+
+tree_auc_perf <- performance(tree_roc_pred, "auc")
+
+tree_AUC <- tree_auc_perf@y.values[[1]]
+tree_AUC
+```
+
+
+## k-fold Cross Validation
+
+We can use k-fold cross-validation, which randomly partitions the dataset into folds of similar size, to see if the tree needs any pruning which can create a more robust model to avoid overfitting as well as make it more interpretable for us. Cross validation will help us find the optimal size for the tree (in terms of number of leaves). We can plot the size against misclassification error to visualize which tree size have the most accurate prediction.
+
+```{r, fig.height=3}
+set.seed(1234)
+cv <- cv.tree(tree1, FUN=prune.misclass, K=10)
+
+best.cv <- cv$size[which.min(cv$dev)]
+
+plot(cv$size , cv$dev, type="b", 
+     xlab = "Number of leaves, \'best\'", 
+     ylab = "Misclassification Error",
+     col = "red", main="Optimal Tree Size")
+abline(v=best.cv, lty=2)
+```
+
+
+```{r, fig.height=4}
+tree1.pruned <- prune.tree(tree1, best = best.cv, 
+                          method = "misclass")
+summary(tree1.pruned)
+plot(tree1.pruned, type = "uniform")
+text(tree1.pruned, col = "blue")
+title("Pruned Classification Tree")
+```
+
+
+```{r, fig.height=4}
+pruned_pred <- predict(tree.pruned, test1, type = "class")
+# confusion matrix
+pruned_conf <- confusionMatrix(pruned_pred, test1$taste)
+ggplotConfusionMatrix(pruned_conf)
+
+pruned_conf <- table(pred = pruned_pred, true = test1$taste)
+
+pruned_acc <- class_acc(pruned_conf)
+pruned_acc
+```
+
+
+## Random Forest
+
+```{r, fig.width=12, fig.height=8}
+set.seed(1234)
+rf <- randomForest(formula = y ~ .,
+                   data = train1, importance = T,
+                   mtry = 31)
+
+print(rf)
+varImpPlot(rf, main = "Variable Importance Plot")
+```
+
+```{r, fig.width=12, fig.height=8}
+set.seed(1234)
+rf2 <- randomForest(formula = y ~ .,
+                   data = train2, importance = T,
+                   mtry = 5)
+
+print(rf2)
+varImpPlot(rf2, main = "Variable Importance Plot")
+```
+
+```{r, fig.height=4}
+# predicting on the test set
+rf_pred <- predict(rf, test1, type = "class")
+
+# Confusion Matrix
+rf_conf <- confusionMatrix(rf_pred, test1$y)
+ggplotConfusionMatrix(rf_conf)
+
+rf_conf <- table(pred = rf_pred, true = test1$y)
+
+rf_acc <- class_acc(rf_conf)
+rf_acc
+```
+
+```{r, fig.height=4}
+# predicting on the test set
+rf_pred <- predict(rf2, test2, type = "class")
+
+# Confusion Matrix
+rf_conf <- confusionMatrix(rf_pred, test2$y)
+ggplotConfusionMatrix(rf_conf)
+
+rf_conf <- table(pred = rf_pred, true = test2$y)
+
+rf_acc <- class_acc(rf_conf)
+rf_acc
+```
+
+```{r}
+rf_pred <- as.data.frame(predict(rf, newdata = test1, type = 'prob'))
+rf_pred_probs <- rf_pred[,2]
+rf_roc_pred <- prediction(rf_pred_probs, test1$y)
+rf_perf <- performance(rf_roc_pred, measure = "tpr", 
+                       x.measure = "fpr")
+
+# Plotting the curve
+plot(rf_perf, col = 2, lwd = 3, 
+     main = "ROC Curve for randomForest with 8 variables")
+abline(0,1)
+
+rf_perf2 <- performance(rf_roc_pred, measure = "auc")
+rf_AUC <- rf_perf2@y.values[[1]]
+rf_AUC
+```
+
+```{r, fig.height=4}
+set.seed(123)
+rf <- randomForest(formula = taste ~ .,
+                   data = train1, importance = T,
+                   mtry = 2)
+print(rf)
+# predicting on the test set
+rf_pred <- predict(rf, test1, type = "class")
+
+# Confusion Matrix
+rf_conf <- confusionMatrix(rf_pred, test1$taste)
+ggplotConfusionMatrix(rf_conf)
+
+rf_conf <- table(pred = rf_pred, true = test1$taste)
+
+rf_acc <- class_acc(rf_conf)
+rf_acc
+```
+
+## SVM
+
+```{r}
+train2 <- data2[1:1000,]
+test2 <- data2[1001:1429,]
+
+t.ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
+svm.grid <- expand.grid(C = 2^(1:3), sigma = seq(4, 9, length = 20))
+svm.train <- train(y ~ ., data = train2, method = "svmRadial",
+                   trControl = t.ctrl, tuneGrid = svm.grid,
+                   preProcess = c("center", "scale"))
+plot(svm.train)
+```
+
+```{r}
+svm.train$bestTune
+svm.predict <- predict(svm.train, test2)
+confusionMatrix(svm.predict, test2$y)
+```
+
+## CNN
+
+```{r}
+LogisticData.cnn <- LogisticData
+
+set.seed(1234)
+train_indices <- sample(1:nrow(LogisticData.cnn), 35000)
+LogisticData.train <- LogisticData.cnn[train_indices,]
+LogisticData.test <- LogisticData.cnn[-train_indices,]
+LogisticData.train_x <- as.matrix(LogisticData.train[,-1])
+LogisticData.train_y <- LogisticData.train[,1]
+LogisticData.test_x <- as.matrix(LogisticData.test[,-1])
+LogisticData.test_y <- LogisticData.test[,1]
+
+LogisticData.train_y<-to_categorical(LogisticData.train_y,2)
+LogisticData.test_y<-to_categorical(LogisticData.test_y,2)
+
+model <- keras_model_sequential()
+model %>% 
+layer_dense(units = 31, input_shape = 31) %>% 
+layer_activation(activation = 'relu') %>% 
+layer_dense(units = 31, input_shape = 31) %>% 
+layer_activation(activation = 'relu') %>% 
+layer_dense(units = 31, input_shape = 31) %>% 
+layer_dropout(rate=0.2)%>%
+layer_activation(activation = 'softmax') %>% 
+layer_dense(units = 2)
+
+model %>% compile(
+loss = 'binary_crossentropy',
+optimizer = 'adam',
+metrics = c('accuracy')
+)
+
+model %>% fit(LogisticData.train_x, LogisticData.train_y, epochs = 10, batch_size = 100)
+
+loss_and_metrics <- model %>% evaluate(LogisticData.test_x, LogisticData.test_y, batch_size = 100)
+
+Logistic.cnn.prob_y <- to_categorical(predict_classes(model, LogisticData.test_x))
+Logistic.cnn.pred_y <- prediction(Logistic.cnn.prob_y, LogisticData.test_y)
+Logistic.cnn.perf_y <- performance(Logistic.cnn.pred_y, measure = "tpr", x.measure = "fpr")
+
+# Plotting the curve
+plot(Logistic.cnn.perf_y, col = 2, lwd = 3, 
+     main = "ROC Curve")
+abline(0,1)
+
+Logistic.cnn.perf_y2 <- performance(Logistic.cnn.pred_y, measure = "auc")
+Logistic.cnn_AUC <- Logistic.cnn.perf_y2@y.values[[1]]
+Logistic.cnn_AUC
+```
+
+
+
+```{r}
+data3 <- data2
+
+
+#table(wine2$taste)
+set.seed(1234)
+train_indices <- sample(1:nrow(data3), 35000)
+train3 <- data3[train_indices,]
+test3 <- data3[-train_indices,]
+train3_x <- as.matrix(train3[,-1])
+train3_y <- train3[,1]
+test3_x <- as.matrix(test3[,-1])
+test3_y <- test3[,1]
+
+train3_y<-to_categorical(train3_y,2)
+test3_y<-to_categorical(test3_y,2)
+
+model <- keras_model_sequential()
+model %>% 
+layer_dense(units = 5, input_shape = 5) %>% 
+layer_activation(activation = 'relu') %>% 
+layer_dense(units = 5, input_shape = 5) %>% 
+layer_activation(activation = 'relu') %>% 
+layer_dense(units = 4, input_shape = 5) %>% 
+layer_dropout(rate=0.2)%>%
+layer_activation(activation = 'softmax') %>% 
+layer_dense(units = 2)
+
+model %>% compile(
+loss = 'binary_crossentropy',
+optimizer = 'sgd',
+metrics = c('accuracy')
+)
+
+model %>% fit(train3_x, train3_y, epochs = 10, batch_size = 100)
+
+loss_and_metrics <- model %>% evaluate(test3_x, test3_y, batch_size = 100)
+```
+
+```{r}
+LinearData.cnn <- LinearData
+
+
+#table(wine2$taste)
+set.seed(1234)
+train_indices <- sample(1:nrow(LinearData.cnn), 35000)
+LinearData.train <- LinearData.cnn[train_indices,]
+LinearData.test <- LinearData.cnn[-train_indices,]
+LinearData.train_x <- as.matrix(LinearData.train[,-1])
+LinearData.train_y <- LinearData.train[,1]
+LinearData.test_x <- as.matrix(LinearData.test[,-1])
+LinearData.test_y <- LinearData.test[,1]
+
+LinearData.train_y<-to_categorical(LinearData.train_y,2)
+LinearData.test_y<-to_categorical(LinearData.test_y,2)
+
+model <- keras_model_sequential()
+model %>% 
+layer_dense(units = 31, input_shape = 31) %>% 
+layer_activation(activation = 'relu') %>% 
+layer_dense(units = 31, input_shape = 31) %>% 
+layer_activation(activation = 'relu') %>% 
+layer_dense(units = 25, input_shape = 31) %>% 
+layer_dropout(rate=0.2)%>%
+layer_activation(activation = 'softmax') %>% 
+layer_dense(units = 2)
+
+model %>% compile(
+loss = 'binary_crossentropy',
+optimizer = 'adam',
+metrics = c('accuracy')
+)
+
+model %>% fit(LinearData.train_x, LinearData.train_y, epochs = 100, batch_size = 100)
+
+loss_and_metrics <- model %>% evaluate(LinearData.test_x, LinearData.test_y, batch_size = 100)
+```
+
+
+# Comparison: Decision Tree, CNN and Random Forest
+
+## Prediction Accuracy & Cost
+
+| Model   | Pruned Decision Tree |     CNN     |  Random Forest |
+|:-------:|:--------------------:|:-----------:|:--------------:|
+|Accuracy |     55.35%           |    60.35%   |    74.13%      |
+|Kappa    |     29.95%           |    36.34%   |    58.52%      |
+|Time     |     0.03 sec         |    0.08 sec |    5 sec       |
